@@ -151,7 +151,6 @@ Currently defined tagged fields are:
 * `h` (23): `data_length` 52. 256-bit description of purpose of payment (SHA256). This is used to commit to an associated description that is over 639 bytes, but the transport mechanism for the description in that case is transport specific and not defined here.
 * `x` (6): `data_length` variable. `expiry` time in seconds (big-endian). Default is 3600 (1 hour) if not specified.
 * `c` (24): `data_length` variable. `min_final_cltv_expiry_delta` to use for the last HTLC in the route. Default is 18 if not specified.
-* `f` (9): `data_length` variable, depending on version. Fallback on-chain address: for Bitcoin, this starts with a 5-bit `version` and contains a witness program or P2PKH or P2SH address.
 * `r` (3): `data_length` variable. One or more entries containing extra routing information for a private route; there may be more than one `r` field
    * `pubkey` (264 bits)
    * `short_channel_id` (64 bits)
@@ -186,10 +185,6 @@ A writer:
     - MUST use the minimum `data_length` possible, i.e. no leading 0 field-elements.
   - MAY include one `n` field. (Otherwise performing signature recovery is required)
     - MUST set `n` to the public key used to create the `signature`.
-  - MAY include one or more `f` fields.
-    - for Bitcoin payments:
-      - MUST set an `f` field to a valid witness version and program, OR to `17`
-      followed by a public key hash, OR to `18` followed by a script hash.
   - if there is NOT a public channel associated with its public key:
     - MUST include at least one `r` field.
       - `r` field MUST contain one or more ordered entries, indicating the forward route from
@@ -209,7 +204,6 @@ A writer:
     - MUST specify the most-preferred field first, followed by less-preferred fields, in order.
 
 A reader:
-  - MUST skip over `f` fields that use an unknown `version`.
   - MUST fail the payment if any mandatory field (`p`, `h`, `s`, `n`) does not have the correct length (52, 52, 52, 53).
   - MUST fail the payment if neither a `d` field nor a `h` field is present, or if both are present.
   - if the `9` field contains unknown _odd_ bits that are non-zero:
@@ -263,11 +257,9 @@ on their fee estimation policy and their sensitivity to time locks). Note
 that remote nodes in the route specify their required `cltv_expiry_delta`
 in the `channel_update` message, which they can update at all times.
 
-The `f` field allows on-chain fallback; however, this may not make sense for
-tiny or time-sensitive payments. It's possible that new
-address forms will appear; thus, multiple `f` fields (in an implied
-preferred order) help with transition, and `f` fields with versions 19-31
-will be ignored by readers.
+## Migration to BIP 321
+
+Applications requiring on-chain fallback functionality should consider implementing BIP 321 (Silent Payments) addresses. BIP 321 provides better privacy and user experience compared to the deprecated fallback address mechanism. Lightning implementations should handle fallback cases by providing separate BIP 321 addresses through alternative channels rather than embedding them in payment requests.
 
 The `r` field allows limited routing assistance: as specified, it only
 allows minimum information to use private channels, however, it could also
@@ -342,10 +334,6 @@ payment.
 A payer:
   - after the `timestamp` plus `expiry` has passed:
     - SHOULD NOT attempt a payment.
-  - otherwise:
-    - if a Lightning payment fails:
-      - MAY attempt to use the address given in the first `f` field that it
-      understands for payment.
   - MAY use the sequence of channels, specified by the `r` field, to route to the payee.
   - SHOULD consider the fee amount and payment timeout before initiating payment.
   - SHOULD use the first `p` field as the payment hash.
@@ -473,139 +461,10 @@ Breakdown:
   * `6c6e626332306d0b25fe64500d04444444444444444444444444444444444444444444444444444444444444444021a000081018202830384048000810182028303840480008101820283038404808105c343925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c10280704000` hex of data for signing (prefix + data after separator up to the start of the signature)
   * `e2ffa444e2979edb639fbdaa384638683ba1a5240b14dd7a150e45a04eea261d` hex of SHA256 of the preimage
 
-> ### The same, on testnet, with a fallback address mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP
-> lntb20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygshp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqfpp3x9et2e20v6pu37c5d9vax37wxq72un989qrsgqdj545axuxtnfemtpwkc45hx9d2ft7x04mt8q7y6t0k2dge9e7h8kpy9p34ytyslj3yu569aalz2xdk8xkd7ltxqld94u8h2esmsmacgpghe9k8
 
-Breakdown:
 
-* `lntb`: prefix, Lightning on Bitcoin testnet
-* `20m`: amount (20 milli-bitcoin)
-* `1`: Bech32 separator
-* `pvjluez`: timestamp (1496314658)
-* `h`: tagged field: hash of description...
-* `s`: payment secret...
-* `p`: payment hash...
-* `f`: tagged field: fallback address
-  * `pp`: `data_length` (`p` = 1; 1 * 32 + 1 == 33)
-  * `3` = 17, so P2PKH address
-  * `x9et2e20v6pu37c5d9vax37wxq72un98`: 160-bit P2PKH address
-* `9`: features...
-* `dj545axuxtnfemtpwkc45hx9d2ft7x04mt8q7y6t0k2dge9e7h8kpy9p34ytyslj3yu569aalz2xdk8xkd7ltxqld94u8h2esmsmacgp`: signature
-* `ghe9k8`: Bech32 checksum
-* Signature breakdown:
-  * `6ca95a74dc32e69ced6175b15a5cc56a92bf19f5dace0f134b7d94d464b9f5cf6090a18d48b243f289394d17bdf89466d8e6b37df5981f696bc3dd5986e1bee1` hex of signature data (32-byte r, 32-byte s)
-  * `1` (int) recovery flag contained in `signature`
-  * `6c6e746232306d0b25fe64500d044444444444444444444444444444444444444444444444444444444444444442e1a1c92db7b3f161a001b7689049eea2701b46f8db7513629edf2408fac7eaedc608043400010203040506070809000102030405060708090001020304050607080901020484313172b5654f6683c8fb146959d347ce303cae4ca728070400` hex of data for signing (prefix + data after separator up to the start of the signature)
-  * `33bc6642a336097c74299cadfdfdd2e4884a555cf1b4fda72b095382d473d795` hex of SHA256 of the preimage
 
-> ### On mainnet, with fallback address 1RustyRX2oai4EYYDpQGWvEL62BBGqN9T with extra routing info to go via nodes 029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255 then 039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255
-> lnbc20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85fr9yq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqpqqqqq9qqqvpeuqafqxu92d8lr6fvg0r5gv0heeeqgcrqlnm6jhphu9y00rrhy4grqszsvpcgpy9qqqqqqgqqqqq7qqzq9qrsgqdfjcdk6w3ak5pca9hwfwfh63zrrz06wwfya0ydlzpgzxkn5xagsqz7x9j4jwe7yj7vaf2k9lqsdk45kts2fd0fkr28am0u4w95tt2nsq76cqw0
 
-Breakdown:
-
-* `lnbc`: prefix, Lightning on Bitcoin mainnet
-* `20m`: amount (20 milli-bitcoin)
-* `1`: Bech32 separator
-* `pvjluez`: timestamp (1496314658)
-* `s`: payment secret...
-* `p`: payment hash...
-* `h`: tagged field: hash of description...
-* `f`: tagged field: fallback address
-  * `pp`: `data_length` (`p` = 1; 1 * 32 + 1 == 33)
-  * `3` = 17, so P2PKH address
-  * `qjmp7lwpagxun9pygexvgpjdc4jdj85f`: 160-bit P2PKH address
-* `r`: tagged field: route information
-  * `9y`: `data_length` (`9` = 5, `y` = 4; 5 * 32 + 4 == 164)
-    * `q20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqpqqqqq9qqqvpeuqafqxu92d8lr6fvg0r5gv0heeeqgcrqlnm6jhphu9y00rrhy4grqszsvpcgpy9qqqqqqgqqqqq7qqzq`:
-      * pubkey: `029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255`
-      * `short_channel_id`: 66051x263430x1800
-      * `fee_base_msat`: 1 millisatoshi
-      * `fee_proportional_millionths`: 20
-      * `cltv_expiry_delta`: 3
-      * pubkey: `039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255`
-      * `short_channel_id`: 197637x395016x2314
-      * `fee_base_msat`: 2 millisatoshi
-      * `fee_proportional_millionths`: 30
-      * `cltv_expiry_delta`: 4
-* `9`: features...
-* `dfjcdk6w3ak5pca9hwfwfh63zrrz06wwfya0ydlzpgzxkn5xagsqz7x9j4jwe7yj7vaf2k9lqsdk45kts2fd0fkr28am0u4w95tt2nsq`: signature
-* `76cqw0`: Bech32 checksum
-* Signature breakdown:
-  * `6a6586db4e8f6d40e3a5bb92e4df5110c627e9ce493af237e20a046b4e86ea200178c59564ecf892f33a9558bf041b6ad2cb8292d7a6c351fbb7f2ae2d16b54e` hex of signature data (32-byte r, 32-byte s)
-  * `0` (int) recovery flag contained in `signature`
-  * `6c6e626332306d0b25fe64500d04444444444444444444444444444444444444444444444444444444444444444021a000081018202830384048000810182028303840480008101820283038404808105c343925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c104843104b61f7dc1ea0dc99424464cc4064dc564d91e891948053c07520370aa69fe3d258878e8863ef9ce408c0c1f9ef52b86fc291ef18ee4aa020406080a0c0e1000000002000000280006073c07520370aa69fe3d258878e8863ef9ce408c0c1f9ef52b86fc291ef18ee4aa06080a0c0e101214000000040000003c00080500e08000` hex of data for signing (prefix + data after separator up to the start of the signature)
-  * `b342d4655b984e53f405fe4d872fb9b7cf54ba538fcd170ed4a5906a9f535064` hex of SHA256 of the preimage
-
-> ### On mainnet, with fallback (P2SH) address 3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX
-> lnbc20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygshp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqfppj3a24vwu6r8ejrss3axul8rxldph2q7z99qrsgqz6qsgww34xlatfj6e3sngrwfy3ytkt29d2qttr8qz2mnedfqysuqypgqex4haa2h8fx3wnypranf3pdwyluftwe680jjcfp438u82xqphf75ym
-
-Breakdown:
-
-* `lnbc`: prefix, Lightning on Bitcoin mainnet
-* `20m`: amount (20 milli-bitcoin)
-* `1`: Bech32 separator
-* `pvjluez`: timestamp (1496314658)
-* `s`: payment secret...
-* `h`: tagged field: hash of description...
-* `p`: payment hash...
-* `f`: tagged field: fallback address
-  * `pp`: `data_length` (`p` = 1; 1 * 32 + 1 == 33)
-  * `j` = 18, so P2SH address
-  * `3a24vwu6r8ejrss3axul8rxldph2q7z9`:  160-bit P2SH address
-* `9`: features...
-* `z6qsgww34xlatfj6e3sngrwfy3ytkt29d2qttr8qz2mnedfqysuqypgqex4haa2h8fx3wnypranf3pdwyluftwe680jjcfp438u82xqp`: signature
-* `hf75ym`: Bech32 checksum
-* Signature breakdown:
-  * `16810439d1a9bfd5a65acc61340dc92448bb2d456a80b58ce012b73cb5202438020500c9ab7ef5573a4d174c811f669885ae27f895bb3a3be52c243589f87518` hex of signature data (32-byte r, 32-byte s)
-  * `1` (int) recovery flag contained in `signature`
-  * `6c6e626332306d0b25fe64500d044444444444444444444444444444444444444444444444444444444444444442e1a1c92db7b3f161a001b7689049eea2701b46f8db7513629edf2408fac7eaedc608043400010203040506070809000102030405060708090001020304050607080901020484328f55563b9a19f321c211e9b9f38cdf686ea0784528070400` hex of data for signing (prefix + data after separator up to the start of the signature)
-  * `9e93321a775f7dffdca03e61d1ac6e0e356cc63cecd3835271200c1e5b499d29` hex of SHA256 of the preimage
-
-> ### On mainnet, with fallback (P2WPKH) address bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4
-> lnbc20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygshp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqfppqw508d6qejxtdg4y5r3zarvary0c5xw7k9qrsgqt29a0wturnys2hhxpner2e3plp6jyj8qx7548zr2z7ptgjjc7hljm98xhjym0dg52sdrvqamxdezkmqg4gdrvwwnf0kv2jdfnl4xatsqmrnsse
-
-* `lnbc`: prefix, Lightning on Bitcoin mainnet
-* `20m`: amount (20 milli-bitcoin)
-* `1`: Bech32 separator
-* `pvjluez`: timestamp (1496314658)
-* `s`: payment secret...
-* `h`: tagged field: hash of description...
-* `p`: payment hash...
-* `f`: tagged field: fallback address
-  * `pp`: `data_length` (`p` = 1; 1 * 32 + 1 == 33)
-  * `q`: 0, so witness version 0
-  * `w508d6qejxtdg4y5r3zarvary0c5xw7k`: 160 bits = P2WPKH.
-* `9`: features...
-* `t29a0wturnys2hhxpner2e3plp6jyj8qx7548zr2z7ptgjjc7hljm98xhjym0dg52sdrvqamxdezkmqg4gdrvwwnf0kv2jdfnl4xatsq`: signature
-* `mrnsse`: Bech32 checksum
-* Signature breakdown:
-  * `5a8bd7b97c1cc9055ee60cf2356621f8752248e037a953886a1782b44a58f5ff2d94e6bc89b7b514541a3603bb33722b6c08aa1a3639d34becc549a99fea6eae` hex of signature data (32-byte r, 32-byte s)
-  * `0` (int) recovery flag contained in `signature`
-  * `6c6e626332306d0b25fe64500d044444444444444444444444444444444444444444444444444444444444444442e1a1c92db7b3f161a001b7689049eea2701b46f8db7513629edf2408fac7eaedc60804340001020304050607080900010203040506070809000102030405060708090102048420751e76e8199196d454941c45d1b3a323f1433bd628070400` hex of data for signing (prefix + data after separator up to the start of the signature)
-  * `44fbec32cdac99a1a3cd638ec507dad633a1e5bba514832fd3471e663a157f7b` hex of SHA256 of the preimage
-
-> ### On mainnet, with fallback (P2WSH) address bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3
-> lnbc20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygshp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqfp4qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q9qrsgq9vlvyj8cqvq6ggvpwd53jncp9nwc47xlrsnenq2zp70fq83qlgesn4u3uyf4tesfkkwwfg3qs54qe426hp3tz7z6sweqdjg05axsrjqp9yrrwc
-
-* `lnbc`: prefix, Lightning on Bitcoin mainnet
-* `20m`: amount (20 milli-bitcoin)
-* `1`: Bech32 separator
-* `pvjluez`: timestamp (1496314658)
-* `s`: payment secret...
-* `h`: tagged field: hash of description...
-* `p`: payment hash...
-* `f`: tagged field: fallback address
-  * `p4`: `data_length` (`p` = 1, `4` = 21; 1 * 32 + 21 == 53)
-  * `q`: 0, so witness version 0
-  * `rp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q`: 260 bits = P2WSH.
-* `9`: features...
-* `9vlvyj8cqvq6ggvpwd53jncp9nwc47xlrsnenq2zp70fq83qlgesn4u3uyf4tesfkkwwfg3qs54qe426hp3tz7z6sweqdjg05axsrjqp`: signature
-* `9yrrwc`: Bech32 checksum
-* Signature breakdown:
-  * `2b3ec248f80301a421817369194f012cdd8af8df1c279981420f9e901e20fa3309d791e11355e609b59ce4a220852a0cd55ab862b1785a83b206c90fa74d01c8` hex of signature data (32-byte r, 32-byte s)
-  * `1` (int) recovery flag contained in `signature`
-  * `6c6e626332306d0b25fe64500d044444444444444444444444444444444444444444444444444444444444444442e1a1c92db7b3f161a001b7689049eea2701b46f8db7513629edf2408fac7eaedc608043400010203040506070809000102030405060708090001020304050607080901020486a01863143c14c5166804bd19203356da136c985678cd4d27a1b8c63296049032620280704000` hex of data for signing (prefix + data after separator up to the start of the signature)
-  * `865a2cc6730e1eeeacd30e6da8e9ab0e9115828d27953ec0c0f985db05da5027` hex of SHA256 of the preimage
 
 > ### Please send 0.00967878534 BTC for a list of items within one week, amount in pico-BTC
 > lnbc9678785340p1pwmna7lpp5gc3xfm08u9qy06djf8dfflhugl6p7lgza6dsjxq454gxhj9t7a0sd8dgfkx7cmtwd68yetpd5s9xar0wfjn5gpc8qhrsdfq24f5ggrxdaezqsnvda3kkum5wfjkzmfqf3jkgem9wgsyuctwdus9xgrcyqcjcgpzgfskx6eqf9hzqnteypzxz7fzypfhg6trddjhygrcyqezcgpzfysywmm5ypxxjemgw3hxjmn8yptk7untd9hxwg3q2d6xjcmtv4ezq7pqxgsxzmnyyqcjqmt0wfjjq6t5v4khxsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsxqyjw5qcqp2rzjq0gxwkzc8w6323m55m4jyxcjwmy7stt9hwkwe2qxmy8zpsgg7jcuwz87fcqqeuqqqyqqqqlgqqqqn3qq9q9qrsgqrvgkpnmps664wgkp43l22qsgdw4ve24aca4nymnxddlnp8vh9v2sdxlu5ywdxefsfvm0fq3sesf08uf6q9a2ke0hc9j6z6wlxg5z5kqpu2v9wz
@@ -688,9 +547,6 @@ Breakdown:
 * `2`: unknown field
   * `qr`: `data_length` (`q` = 0, `r` = 3; 0 * 32 + 3 == 3)
   * `qqq`: zeroes
-* `f`: tagged field: fallback address
-  * `pp`: `data_length` (`p` = 1, `p` = 1; 1 * 32 + 1 == 33)
-  * `nqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq`: fallback address type 19 (ignored)
 * `p`: payment hash
   * `pn`: `data_length` (`p` = 1, `n` = 19; 1 * 32 + 19 == 51) (ignored)
   * `qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq`

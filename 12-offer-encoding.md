@@ -662,9 +662,6 @@ the `onion_message` `invoice` field.
     1. type: 170 (`invoice_amount`)
     2. data:
         * [`tu64`:`msat`]
-    1. type: 172 (`invoice_fallbacks`)
-    2. data:
-        * [`...*fallback_address`:`fallbacks`]
     1. type: 174 (`invoice_features`)
     2. data:
         * [`...*byte`:`features`]
@@ -685,11 +682,6 @@ the `onion_message` `invoice` field.
    * [`u16`:`flen`]
    * [`flen*byte`:`features`]
 
-1. subtype: `fallback_address`
-2. data:
-   * [`byte`:`version`]
-   * [`u16`:`len`]
-   * [`len*byte`:`address`]
 
 ## Invoice Features
 
@@ -733,13 +725,6 @@ A writer of an invoice:
   - if the expiry for accepting payment is not 7200 seconds after `invoice_created_at`:
     - MUST set `invoice_relative_expiry`.`seconds_from_creation` to the number of
       seconds after `invoice_created_at` that payment of this invoice should not be attempted.
-  - if it accepts onchain payments:
-    - MAY specify `invoice_fallbacks`
-    - SHOULD specify `invoice_fallbacks` in order of most-preferred to least-preferred
-      if it has a preference.
-    - for the bitcoin chain, it MUST set each `fallback_address` with
-      `version` as a valid witness version and `address` as a valid witness
-      program
   - MUST include `invoice_paths` containing one or more paths to the node.
     - MUST specify `invoice_paths` in order of most-preferred to least-preferred if it has a preference.
     - MUST include `invoice_blindedpay` with exactly one `blinded_payinfo` for each `blinded_path` in `paths`, in order.
@@ -790,10 +775,6 @@ A reader of an invoice:
     - MUST reject the invoice if `invoice_amount` is not equal to `invreq_amount`
   - otherwise:
     - SHOULD confirm authorization if `invoice_amount`.`msat` is not within the amount range authorized.
-  - for the bitcoin chain, if the invoice specifies `invoice_fallbacks`:
-    - MUST ignore any `fallback_address` for which `version` is greater than 16.
-    - MUST ignore any `fallback_address` for which `address` is less than 2 or greater than 40 bytes.
-    - MUST ignore any `fallback_address` for which `address` does not meet known requirements for the given `version`
   - if `invreq_paths` is present:
     - MUST reject the invoice if it did not arrive via one of those paths.
   - otherwise, neither `offer_issuer_id` nor `offer_paths` are present (not derived from an offer):
@@ -846,6 +827,10 @@ may define the behavior in future.  The redundant requirement to check
 a response to an invoice request, that field must have existed due
 to the invoice request requirements, and we also require it to be mirrored
 here.
+
+## Migration to BIP 321
+
+Applications requiring on-chain fallback functionality should consider implementing BIP 321 (Silent Payments) addresses. BIP 321 provides better privacy and user experience compared to the deprecated fallback address mechanism. Lightning implementations should handle fallback cases by providing separate BIP 321 addresses through alternative channels rather than embedding them in payment requests.
 
 
 # Invoice Errors
