@@ -249,7 +249,7 @@ A writer of an offer:
       - MUST specify `offer_amount` in the currency unit adjusted by the ISO 4217
         exponent (e.g. USD cents).
     - MUST set `offer_description` to a complete description of the purpose
-      of the payment without characters in the unicode "Other" (C*) General Category.
+      of the payment without characters in the unicode "Other" (C*), "Zl" or "Zp" General Categories.
   - otherwise:
     - MUST NOT set `offer_amount`
     - MUST NOT set `offer_currency`
@@ -273,7 +273,7 @@ A writer of an offer:
      - MUST set `offer_issuer_id` to the node's public key to request the invoice from.
   - if it sets `offer_issuer`:
     - SHOULD set it to identify the issuer of the invoice clearly.
-    - MUST NOT use characters in the unicode "Other" (C*) General Category.
+    - MUST NOT use characters in the unicode "Other" (C*), "Zl" or "Zp" General Categories.
     - if it includes a domain name:
       - SHOULD begin it with either user@domain or domain
       - MAY follow with a space and more text
@@ -303,7 +303,7 @@ A reader of an offer:
     - if the node does not accept invoices for at least one of the `chains`:
       - MUST NOT respond to the offer
   - if `offer_description` or `offer_issuer` contain characters in the unicode
-    "Cc", "Cf", "Cs", or "Co" General Category:
+    "Cc", "Cf", "Cs", "Co", "Zl", or "Zp" General Category:
     - MUST NOT respond to the offer
   - if `offer_description` or `offer_issuer` contain characters in the unicode
     "Cn" (unassigned) General Category:
@@ -507,7 +507,7 @@ The writer:
     - MUST set `invreq_features`.`features` to the bitmap of features.
     - MUST minimally-encode `invreq_features`.`features`.
   - if it includes `invreq_payer_note`:
-    - MUST NOT use characters in the unicode "Other" (C*) General Category.
+    - MUST NOT use characters in the unicode "Other" (C*), "Zl" or "Zp" General Categories.
   - if it received the offer from which it constructed this `invoice_request` using BIP 353 resolution:
     - MUST include `invreq_bip_353_name` with,
       - `name` set to the post-₿, pre-@ part of the BIP 353 HRN,
@@ -564,7 +564,7 @@ The reader:
   - otherwise:
     - MUST reject the invoice request if `invreq_chain`.`chain` is not a supported chain.
   - if `invreq_payer_note` is present:
-    - if it contains characters in the unicode "Cc", "Cf", "Cs", or "Co" General Category:
+    - if it contains characters in the unicode "Cc", "Cf", "Cs", "Co", "Zl", or "Zp" General Category:
       - MUST reject the invoice request.
     - if it contains characters in the unicode "Cn" (unassigned) General Category:
       - MAY reject the invoice request.
